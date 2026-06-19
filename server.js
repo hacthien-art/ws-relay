@@ -453,7 +453,7 @@ const httpServer = createServer((req, res) => {
                 try {
                     const parsed = JSON.parse(cleanBody);
                     const allowed = [
-                        'messages', 'model', 'temperature', 'top_p', 'top_k',
+                        'messages', 'model', 'temperature', 'top_p',
                         'max_tokens', 'max_completion_tokens', 'stop', 'stream',
                         'presence_penalty', 'frequency_penalty', 'response_format',
                         'tools', 'tool_choice'

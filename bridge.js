@@ -50,73 +50,85 @@ function connectWS() {
     log('✅ WS Connected');
   });
 
+  function handleWSMessage(msg) {
+    if (msg.event_type === 'batch') {
+      if (Array.isArray(msg.items)) {
+        for (const item of msg.items) {
+          handleWSMessage(item);
+        }
+      }
+      return;
+    }
+
+    // Server info
+    if (msg.event_type === 'server_info') {
+      serverInfo = msg;
+      log(`📡 Relay v${msg.version}, role=${msg.assigned_role}`);
+      return;
+    }
+
+    // Heartbeat pong
+    if (msg.event_type === 'pong' || msg.event_type === 'heartbeat') return;
+
+    // Error from relay (no proxy)
+    if (msg.event_type === 'error' && !msg.request_id) {
+      log(`⚠️ Relay error: ${msg.message}`);
+      return;
+    }
+
+    // Route to pending request
+    const req = pendingRequests.get(msg.request_id);
+    if (!req) return;
+
+    switch (msg.event_type) {
+      case 'response_headers':
+        req.status = msg.status || 200;
+        req.respHeaders = msg.headers || {};
+        break;
+
+      case 'chunk':
+        if (!req.headersSent) {
+          req.headersSent = true;
+          const h = {
+            'Content-Type': req.respHeaders['content-type'] || 'application/json',
+            'Transfer-Encoding': 'chunked',
+            'Access-Control-Allow-Origin': '*',
+          };
+          req.res.writeHead(req.status || 200, h);
+        }
+        req.res.write(msg.data);
+        break;
+
+      case 'stream_close':
+        if (!req.headersSent) {
+          req.res.writeHead(req.status || 200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          });
+        }
+        req.res.end();
+        pendingRequests.delete(msg.request_id);
+        log(`✅ ${msg.request_id.slice(0, 8)} completed`);
+        break;
+
+      case 'error':
+        if (!req.headersSent) {
+          req.res.writeHead(msg.status || 500, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          });
+        }
+        req.res.end(JSON.stringify({ error: { message: msg.message, code: msg.status } }));
+        pendingRequests.delete(msg.request_id);
+        log(`❌ ${msg.request_id.slice(0, 8)} error: ${msg.message}`);
+        break;
+    }
+  }
+
   ws.on('message', (data) => {
     try {
       const msg = JSON.parse(data.toString());
-
-      // Server info
-      if (msg.event_type === 'server_info') {
-        serverInfo = msg;
-        log(`📡 Relay v${msg.version}, role=${msg.assigned_role}`);
-        return;
-      }
-
-      // Heartbeat pong
-      if (msg.event_type === 'pong' || msg.event_type === 'heartbeat') return;
-
-      // Error from relay (no proxy)
-      if (msg.event_type === 'error' && !msg.request_id) {
-        log(`⚠️ Relay error: ${msg.message}`);
-        return;
-      }
-
-      // Route to pending request
-      const req = pendingRequests.get(msg.request_id);
-      if (!req) return;
-
-      switch (msg.event_type) {
-        case 'response_headers':
-          req.status = msg.status || 200;
-          req.respHeaders = msg.headers || {};
-          break;
-
-        case 'chunk':
-          if (!req.headersSent) {
-            req.headersSent = true;
-            const h = {
-              'Content-Type': req.respHeaders['content-type'] || 'application/json',
-              'Transfer-Encoding': 'chunked',
-              'Access-Control-Allow-Origin': '*',
-            };
-            req.res.writeHead(req.status || 200, h);
-          }
-          req.res.write(msg.data);
-          break;
-
-        case 'stream_close':
-          if (!req.headersSent) {
-            req.res.writeHead(req.status || 200, {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            });
-          }
-          req.res.end();
-          pendingRequests.delete(msg.request_id);
-          log(`✅ ${msg.request_id.slice(0, 8)} completed`);
-          break;
-
-        case 'error':
-          if (!req.headersSent) {
-            req.res.writeHead(msg.status || 500, {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            });
-          }
-          req.res.end(JSON.stringify({ error: { message: msg.message, code: msg.status } }));
-          pendingRequests.delete(msg.request_id);
-          log(`❌ ${msg.request_id.slice(0, 8)} error: ${msg.message}`);
-          break;
-      }
+      handleWSMessage(msg);
     } catch (e) {
       // ignore parse errors
     }
@@ -288,7 +300,7 @@ const server = http.createServer((req, res) => {
       try {
         const parsed = JSON.parse(cleanBody);
         const allowed = [
-            'messages', 'model', 'temperature', 'top_p', 'top_k',
+            'messages', 'model', 'temperature', 'top_p',
             'max_tokens', 'max_completion_tokens', 'stop', 'stream',
             'presence_penalty', 'frequency_penalty', 'response_format',
             'tools', 'tool_choice'
