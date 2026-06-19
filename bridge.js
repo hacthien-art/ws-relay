@@ -238,6 +238,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Models mock endpoint
+  const urlObj = new URL(req.url, `http://localhost:${PORT}`);
+  if (urlObj.pathname === '/v1/models' || urlObj.pathname === '/models') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({
+      object: 'list',
+      data: [
+        { id: 'gemini-3.5-flash', object: 'model', created: 1770000000, owned_by: 'google' },
+        { id: 'gemini-3.1-pro', object: 'model', created: 1770000000, owned_by: 'google' },
+        { id: 'gemini-2.5-flash', object: 'model', created: 1718800000, owned_by: 'google' },
+        { id: 'gemini-2.5-pro', object: 'model', created: 1718800000, owned_by: 'google' },
+        { id: 'gemini-2.0-flash', object: 'model', created: 1718800000, owned_by: 'google' },
+        { id: 'gemini-2.0-pro-exp-02-05', object: 'model', created: 1718800000, owned_by: 'google' },
+        { id: 'gemini-1.5-flash', object: 'model', created: 1718800000, owned_by: 'google' },
+        { id: 'gemini-1.5-pro', object: 'model', created: 1718800000, owned_by: 'google' },
+        { id: 'gemini-1.5-flash-8b', object: 'model', created: 1718800000, owned_by: 'google' }
+      ]
+    }));
+    return;
+  }
+
   // Collect body
   let body = '';
   req.on('data', chunk => body += chunk);

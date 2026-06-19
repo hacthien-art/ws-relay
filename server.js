@@ -380,6 +380,25 @@ const httpServer = createServer((req, res) => {
         const roomCode = apiMatch[1];
         const apiPath = apiMatch[2]; // e.g., /v1beta/models/gemini-2.0-flash:generateContent (without query string)
 
+        if (apiPath === '/v1/models' || apiPath === '/models' || apiPath === '/v1beta/openai/models') {
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({
+                object: 'list',
+                data: [
+                    { id: 'gemini-3.5-flash', object: 'model', created: 1770000000, owned_by: 'google' },
+                    { id: 'gemini-3.1-pro', object: 'model', created: 1770000000, owned_by: 'google' },
+                    { id: 'gemini-2.5-flash', object: 'model', created: 1718800000, owned_by: 'google' },
+                    { id: 'gemini-2.5-pro', object: 'model', created: 1718800000, owned_by: 'google' },
+                    { id: 'gemini-2.0-flash', object: 'model', created: 1718800000, owned_by: 'google' },
+                    { id: 'gemini-2.0-pro-exp-02-05', object: 'model', created: 1718800000, owned_by: 'google' },
+                    { id: 'gemini-1.5-flash', object: 'model', created: 1718800000, owned_by: 'google' },
+                    { id: 'gemini-1.5-pro', object: 'model', created: 1718800000, owned_by: 'google' },
+                    { id: 'gemini-1.5-flash-8b', object: 'model', created: 1718800000, owned_by: 'google' }
+                ]
+            }));
+            return;
+        }
+
         // Check room & proxy
         const room = rooms.get(roomCode);
         const proxies = room ? [...room.proxy].filter(ws => ws.readyState === 1) : [];
