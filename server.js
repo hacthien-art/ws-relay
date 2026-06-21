@@ -301,7 +301,7 @@ function captureDebug(roomCode, entry) {
 }
 
 // ── HTTP Server ─────────────────────────────────
-const httpServer = createServer((req, res) => {
+const httpServer = createServer(async (req, res) => {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -399,9 +399,25 @@ const httpServer = createServer((req, res) => {
             return;
         }
 
-        // Check room & proxy
-        const room = rooms.get(roomCode);
-        const proxies = room ? [...room.proxy].filter(ws => ws.readyState === 1) : [];
+        // Check room & proxy (wait up to 5s if none connected)
+        const getProxies = () => {
+            const r = rooms.get(roomCode);
+            return r ? [...r.proxy].filter(ws => ws.readyState === 1) : [];
+        };
+
+        let proxies = getProxies();
+        if (proxies.length === 0) {
+            console.log(`[HTTP Bridge] No proxy connected for room "${roomCode}". Waiting up to 5s...`);
+            for (let i = 0; i < 10; i++) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                proxies = getProxies();
+                if (proxies.length > 0) {
+                    console.log(`[HTTP Bridge] Proxy reconnected after ${i * 0.5 + 0.5}s for room "${roomCode}"`);
+                    break;
+                }
+            }
+        }
+
         if (proxies.length === 0) {
             res.writeHead(503, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
             res.end(JSON.stringify({
@@ -630,7 +646,7 @@ wss.on('connection', (ws, req) => {
     }
 
     // ── Message Handler ────────────────────────
-    ws.on('message', (data) => {
+    ws.on('message', async (data) => {
         const msg = data.toString();
 
         // ── Handle client heartbeat/ping (mobile keep-alive) ──
@@ -681,8 +697,19 @@ wss.on('connection', (ws, req) => {
         }
 
         // ── No target available: send error back ────
-        // When app sends request but no proxy is connected → reply with error
-        // so the client doesn't hang indefinitely waiting for a response
+        // When app sends request but no proxy is connected → wait up to 5s
+        // so if it's a brief reconnect/reload, it won't fail
+        if (role === 'app' && targets.size === 0) {
+            console.log(`⚠️ [${code}] No proxy connected for request from ${clientId}. Waiting up to 5s...`);
+            for (let i = 0; i < 10; i++) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                if (targets.size > 0) {
+                    console.log(`[${code}] Proxy connected after waiting for ${clientId}`);
+                    break;
+                }
+            }
+        }
+
         if (role === 'app' && targets.size === 0) {
             try {
                 const parsed = JSON.parse(msg);
@@ -715,11 +742,32 @@ wss.on('connection', (ws, req) => {
             } catch { /* not json */ }
         }
 
-        // Count alive targets for routing
-        let aliveTargets = 0;
+        // Count alive targets for routing (wait up to 5s if targets exist but none alive)
+        const checkAliveTargets = () => {
+            let count = 0;
+            for (const target of targets) {
+                if (target !== ws && target.readyState === 1) {
+                    count++;
+                }
+            }
+            return count;
+        };
+
+        let aliveTargets = checkAliveTargets();
+        if (role === 'app' && targets.size > 0 && aliveTargets === 0) {
+            console.log(`⚠️ [${code}] Proxies connected but none are alive for ${clientId}. Waiting up to 5s...`);
+            for (let i = 0; i < 10; i++) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                aliveTargets = checkAliveTargets();
+                if (aliveTargets > 0) {
+                    console.log(`[${code}] Proxy became alive after waiting for ${clientId}`);
+                    break;
+                }
+            }
+        }
+
         for (const target of targets) {
             if (target === ws || target.readyState !== 1) continue;
-            aliveTargets++;
 
             if (isChunk) {
                 // Batch chunks for efficiency
