@@ -131,7 +131,7 @@ function detectRoleFromMessage(msg) {
 
 // ── Clean Gemini Native Body ────────────────────
 // SillyTavern sends extra params that Gemini API rejects as "invalid argument"
-function cleanGeminiBody(bodyStr) {
+function cleanGeminiBody(bodyStr, modelName = '') {
     try {
         const parsed = JSON.parse(bodyStr);
 
@@ -180,6 +180,35 @@ function cleanGeminiBody(bodyStr) {
             // Remove empty stopSequences array (can cause issues)
             if (Array.isArray(parsed.generationConfig.stopSequences) && parsed.generationConfig.stopSequences.length === 0) {
                 delete parsed.generationConfig.stopSequences;
+            }
+
+            // Clean thinkingConfig
+            if (parsed.generationConfig.thinkingConfig) {
+                const lowerModel = modelName.toLowerCase();
+                const supportsThinking = lowerModel.includes('-thinking') 
+                                       || lowerModel.includes('gemini-2.5') 
+                                       || lowerModel.includes('gemini-3');
+
+                if (!supportsThinking) {
+                    removed.push('generationConfig.thinkingConfig (unsupported model)');
+                    delete parsed.generationConfig.thinkingConfig;
+                } else {
+                    const tc = parsed.generationConfig.thinkingConfig;
+                    const cleanTc = {};
+
+                    if (typeof tc.thinkingBudget === 'number') {
+                        cleanTc.thinkingBudget = tc.thinkingBudget;
+                    } else if (typeof tc.thinking_budget === 'number') {
+                        cleanTc.thinkingBudget = tc.thinking_budget;
+                    } else if (tc.thinkingLevel || tc.thinking_level) {
+                        cleanTc.thinkingBudget = -1;
+                        removed.push(`thinkingConfig.thinkingLevel (${tc.thinkingLevel || tc.thinking_level}) → thinkingBudget (-1)`);
+                    } else {
+                        cleanTc.thinkingBudget = -1;
+                    }
+
+                    parsed.generationConfig.thinkingConfig = cleanTc;
+                }
             }
         }
 
@@ -508,7 +537,9 @@ const httpServer = createServer(async (req, res) => {
                 } catch { /* keep original body */ }
             } else if (cleanBody && isGeminiNative) {
                 // Gemini native mode: strip unsupported fields
-                cleanBody = cleanGeminiBody(cleanBody);
+                const modelMatch = finalPath.match(/\/models\/([^:/]+)/);
+                const modelName = modelMatch ? modelMatch[1] : '';
+                cleanBody = cleanGeminiBody(cleanBody, modelName);
             }
 
             // Analyze body structure for debug (don't store raw body - too large)

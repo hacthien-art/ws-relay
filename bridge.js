@@ -152,8 +152,7 @@ setInterval(() => {
   }
 }, HEARTBEAT_MS);
 
-// ── Clean Gemini Native Body ────────────────────
-function cleanGeminiBody(bodyStr) {
+function cleanGeminiBody(bodyStr, modelName = '') {
     try {
         const parsed = JSON.parse(bodyStr);
         const allowedTopLevel = [
@@ -174,7 +173,7 @@ function cleanGeminiBody(bodyStr) {
                 'stopSequences', 'responseMimeType', 'responseSchema',
                 'candidateCount', 'maxOutputTokens', 'temperature',
                 'topP', 'topK', 'presencePenalty', 'frequencyPenalty',
-                'responseLogprobs', 'logprobs', 'seed'
+                'responseLogprobs', 'logprobs', 'seed', 'thinkingConfig'
             ];
 
             for (const key of Object.keys(parsed.generationConfig)) {
@@ -196,6 +195,35 @@ function cleanGeminiBody(bodyStr) {
 
             if (Array.isArray(parsed.generationConfig.stopSequences) && parsed.generationConfig.stopSequences.length === 0) {
                 delete parsed.generationConfig.stopSequences;
+            }
+
+            // Clean thinkingConfig
+            if (parsed.generationConfig.thinkingConfig) {
+                const lowerModel = modelName.toLowerCase();
+                const supportsThinking = lowerModel.includes('-thinking') 
+                                       || lowerModel.includes('gemini-2.5') 
+                                       || lowerModel.includes('gemini-3');
+
+                if (!supportsThinking) {
+                    removed.push('generationConfig.thinkingConfig (unsupported model)');
+                    delete parsed.generationConfig.thinkingConfig;
+                } else {
+                    const tc = parsed.generationConfig.thinkingConfig;
+                    const cleanTc = {};
+
+                    if (typeof tc.thinkingBudget === 'number') {
+                        cleanTc.thinkingBudget = tc.thinkingBudget;
+                    } else if (typeof tc.thinking_budget === 'number') {
+                        cleanTc.thinkingBudget = tc.thinking_budget;
+                    } else if (tc.thinkingLevel || tc.thinking_level) {
+                        cleanTc.thinkingBudget = -1;
+                        removed.push(`thinkingConfig.thinkingLevel (${tc.thinkingLevel || tc.thinking_level}) → thinkingBudget (-1)`);
+                    } else {
+                        cleanTc.thinkingBudget = -1;
+                    }
+
+                    parsed.generationConfig.thinkingConfig = cleanTc;
+                }
             }
         }
 
@@ -341,7 +369,9 @@ const server = http.createServer((req, res) => {
       } catch { /* keep original body */ }
     } else if (cleanBody && isGeminiNative) {
       // Gemini native mode: strip unsupported fields
-      cleanBody = cleanGeminiBody(cleanBody);
+      const modelMatch = finalPath.match(/\/models\/([^:/]+)/);
+      const modelName = modelMatch ? modelMatch[1] : '';
+      cleanBody = cleanGeminiBody(cleanBody, modelName);
     }
 
     const requestSpec = {
