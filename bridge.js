@@ -24,7 +24,7 @@ import crypto from 'crypto';
 
 // ── Config ──────────────────────────────────────
 const PORT = parseInt(process.env.BRIDGE_PORT || '5001');
-const WS_RELAY = process.env.WS_RELAY || 'wss://ws-relay-qcfy.onrender.com';
+const WS_RELAY = process.env.WS_RELAY || 'wss://my-new-ws-relay.onrender.com';
 const ROOM_CODE = process.env.ROOM_CODE || 'mariengban';
 const HEARTBEAT_MS = 15000;
 
