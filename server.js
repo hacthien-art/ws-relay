@@ -9,6 +9,7 @@
 
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import { listOpenAIModels, listGeminiModels } from './gemini-models.js';
 
 const PORT = parseInt(process.env.PORT) || 8080;
 
@@ -409,33 +410,16 @@ const httpServer = createServer(async (req, res) => {
         const roomCode = apiMatch[1];
         const apiPath = apiMatch[2]; // e.g., /v1beta/models/gemini-2.0-flash:generateContent (without query string)
 
-        // Danh sách model tĩnh cho bước thiết lập (MVU / SillyTavern bấm "lấy model").
-        // CHỈ liệt kê model có thật — trước đây danh sách có gemini-3.5-flash và
-        // gemini-3.1-pro (không tồn tại) nằm đầu, ai chọn trúng là mọi request hỏng.
+        // Shared chat catalog for MVU / SillyTavern discovery, even without a proxy.
         if (apiPath === '/v1/models' || apiPath === '/models' || apiPath === '/v1beta/openai/models') {
             res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-            res.end(JSON.stringify({
-                object: 'list',
-                data: [
-                    { id: 'gemini-2.5-pro', object: 'model', created: 1718800000, owned_by: 'google' },
-                    { id: 'gemini-2.5-flash', object: 'model', created: 1718800000, owned_by: 'google' },
-                    { id: 'gemini-2.5-flash-lite', object: 'model', created: 1718800000, owned_by: 'google' },
-                    { id: 'gemini-3-pro-preview', object: 'model', created: 1760000000, owned_by: 'google' }
-                ]
-            }));
+            res.end(JSON.stringify(listOpenAIModels()));
             return;
         }
 
         if (apiPath === '/v1beta/models') {
             res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-            res.end(JSON.stringify({
-                models: [
-                    { name: 'models/gemini-2.5-pro', displayName: 'Gemini 2.5 Pro', inputTokenLimit: 1048576, outputTokenLimit: 65536, supportedGenerationMethods: ['generateContent', 'streamGenerateContent', 'countTokens'] },
-                    { name: 'models/gemini-2.5-flash', displayName: 'Gemini 2.5 Flash', inputTokenLimit: 1048576, outputTokenLimit: 65536, supportedGenerationMethods: ['generateContent', 'streamGenerateContent', 'countTokens'] },
-                    { name: 'models/gemini-2.5-flash-lite', displayName: 'Gemini 2.5 Flash Lite', inputTokenLimit: 1048576, outputTokenLimit: 65536, supportedGenerationMethods: ['generateContent', 'streamGenerateContent', 'countTokens'] },
-                    { name: 'models/gemini-3-pro-preview', displayName: 'Gemini 3 Pro Preview', inputTokenLimit: 1048576, outputTokenLimit: 65536, supportedGenerationMethods: ['generateContent', 'streamGenerateContent', 'countTokens'] }
-                ]
-            }));
+            res.end(JSON.stringify(listGeminiModels()));
             return;
         }
 

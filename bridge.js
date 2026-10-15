@@ -21,6 +21,7 @@
 import http from 'http';
 import WebSocket from 'ws';
 import crypto from 'crypto';
+import { listOpenAIModels, listGeminiModels } from './gemini-models.js';
 
 // ── Config ──────────────────────────────────────
 const PORT = parseInt(process.env.BRIDGE_PORT || '5001');
@@ -266,20 +267,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Models mock endpoint
+  // Shared model discovery endpoints (available without a connected relay).
   const urlObj = new URL(req.url, `http://localhost:${PORT}`);
-  if (urlObj.pathname === '/v1/models' || urlObj.pathname === '/models') {
+  if (urlObj.pathname === '/v1/models' || urlObj.pathname === '/models' || urlObj.pathname === '/v1beta/openai/models') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify({
-      object: 'list',
-      data: [
-        // Chỉ model có thật — danh sách cũ có gemini-3.5-flash / gemini-3.1-pro không tồn tại
-        { id: 'gemini-2.5-pro', object: 'model', created: 1718800000, owned_by: 'google' },
-        { id: 'gemini-2.5-flash', object: 'model', created: 1718800000, owned_by: 'google' },
-        { id: 'gemini-2.5-flash-lite', object: 'model', created: 1718800000, owned_by: 'google' },
-        { id: 'gemini-3-pro-preview', object: 'model', created: 1760000000, owned_by: 'google' }
-      ]
-    }));
+    res.end(JSON.stringify(listOpenAIModels()));
+    return;
+  }
+
+  if (urlObj.pathname === '/v1beta/models') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(listGeminiModels()));
     return;
   }
 
